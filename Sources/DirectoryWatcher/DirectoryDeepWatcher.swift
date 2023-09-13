@@ -14,16 +14,18 @@ public class DirectoryDeepWatcher: NSObject {
 	typealias SourceObject = (source: DispatchSourceFileSystemObject, descriptor: Int32, url: URL)
 	private var sources = [SourceObject]()
     private var queue: DispatchQueue?
+    private var keys: [URLResourceKey]? = [.creationDateKey, .isDirectoryKey]
+    private var mask: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles]
 
     public var onFolderNotification: ((URL) -> Void)?
     
     //init
-    init(watchedUrl: URL) {
+    private init(watchedUrl: URL) {
         self.watchedUrl = watchedUrl
 		self.queue = DispatchQueue.global()
     }
     
-    public class func watch(_ url: URL) -> DirectoryDeepWatcher? {
+    public class func watch(_ url: URL, includingPropertiesForKeys keys: [URLResourceKey]? = [.creationDateKey, .isDirectoryKey], options mask: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles]) -> DirectoryDeepWatcher? {
         let directoryWatcher = DirectoryDeepWatcher(watchedUrl: url)
 		
 		guard let sourceObject = directoryWatcher.createSource(from: url) else { return nil }
@@ -31,8 +33,8 @@ public class DirectoryDeepWatcher: NSObject {
 		directoryWatcher.sources.append(sourceObject)
 		
 		let enumerator = FileManager.default.enumerator(at: url,
-                                                        includingPropertiesForKeys: [.creationDateKey, .isDirectoryKey],
-                                                        options: [.skipsHiddenFiles], errorHandler: { (url, error) -> Bool in
+                                                        includingPropertiesForKeys: keys,
+                                                        options: mask, errorHandler: { (url, error) -> Bool in
                                                             print("directoryEnumerator error at \(url): ", error)
                                                             return true
         })!
@@ -41,11 +43,14 @@ public class DirectoryDeepWatcher: NSObject {
             // Something went wrong, return nil
             return nil
         }
+        
+        directoryWatcher.keys = keys
+        directoryWatcher.mask = mask
 
         return directoryWatcher
     }
 	
-	public func watch(_ url: URL) -> Bool {
+	private func watch(_ url: URL, includingPropertiesForKeys keys: [URLResourceKey]? = [.creationDateKey, .isDirectoryKey], options mask: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles]) -> Bool {
 		if !self.sources.isEmpty {
 			self.stopWatching()
 		}
@@ -55,8 +60,8 @@ public class DirectoryDeepWatcher: NSObject {
 		self.sources.append(sourceObject)
 		
 		let enumerator = FileManager.default.enumerator(at: url,
-                                                        includingPropertiesForKeys: [.creationDateKey, .isDirectoryKey],
-                                                        options: [.skipsHiddenFiles], errorHandler: { (url, error) -> Bool in
+                                                        includingPropertiesForKeys: keys,
+                                                        options: mask, errorHandler: { (url, error) -> Bool in
                                                             print("directoryEnumerator error at \(url): ", error)
                                                             return true
         })!
@@ -65,7 +70,7 @@ public class DirectoryDeepWatcher: NSObject {
 	}
 	
 	public func resetWatching() -> Bool {
-		return self.watch(self.watchedUrl)
+        return self.watch(self.watchedUrl, includingPropertiesForKeys: self.keys, options: self.mask)
 	}
 	
 	private func createSource(from url: URL) -> SourceObject? {
